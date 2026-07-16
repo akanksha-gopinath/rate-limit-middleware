@@ -26,6 +26,19 @@ public final class TokenBucketRateLimiter implements RateLimiter {
     }
 
     @Override
+    public RateLimitResult peek(String key) {
+        long nowNanos = clock.instant().toEpochMilli() * 1_000_000L;
+        BucketState defaultState = BucketState.initial(config.capacity(), nowNanos);
+
+        BucketState current = store.computeIfAbsent(key, defaultState);
+        long elapsedNanos = nowNanos - current.lastUpdateNanos();
+        double tokensToAdd = elapsedNanos * config.refillRatePerNano();
+        double availableTokens = Math.min(config.capacity(), current.level() + tokensToAdd);
+
+        return RateLimitResult.allowed((long) availableTokens);
+    }
+
+    @Override
     public RateLimitResult tryAcquire(String key) {
         long nowNanos = clock.instant().toEpochMilli() * 1_000_000L;
         BucketState defaultState = BucketState.initial(config.capacity(), nowNanos);

@@ -4,7 +4,7 @@ plugins {
 }
 
 application {
-    mainClass.set("com.ratelimit.Demo")
+    mainClass.set("com.ratelimit.DemoServer")
 }
 
 group = "com.ratelimit"

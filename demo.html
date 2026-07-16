@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rate Limiting Algorithms — Visual Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        .controls label {
+            font-size: 0.85rem;
+            color: #8b949e;
+        }
+        .controls input {
+            width: 80px;
+            padding: 0.3rem 0.5rem;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            background: #161b22;
+            color: #e1e4e8;
+            font-size: 0.9rem;
+        }
+        .controls button {
+            padding: 0.5rem 1.2rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-request {
+            background: #238636;
+            color: #fff;
+        }
+        .btn-request:hover { background: #2ea043; }
+        .btn-burst {
+            background: #da3633;
+            color: #fff;
+        }
+        .btn-burst:hover { background: #f85149; }
+        .btn-reset {
+            background: #30363d;
+            color: #e1e4e8;
+        }
+        .btn-reset:hover { background: #484f58; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 1.5rem;
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 0.3rem;
+            color: #fff;
+        }
+        .card .description {
+            font-size: 0.8rem;
+            color: #8b949e;
+            margin-bottom: 1.2rem;
+        }
+        .stats {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        .stat-value {
+            font-weight: 700;
+            font-size: 1.3rem;
+            color: #58a6ff;
+        }
+        .stat-label {
+            color: #8b949e;
+            font-size: 0.75rem;
+        }
+
+        /* Bucket visualization */
+        .bucket-container {
+            position: relative;
+            width: 120px;
+            height: 160px;
+            margin: 1rem auto;
+        }
+        .bucket {
+            position: absolute;
+            bottom: 0;
+            left: 10px;
+            right: 10px;
+            height: 140px;
+            border: 3px solid #484f58;
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            overflow: hidden;
+        }
+        .bucket-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            transition: height 0.3s ease, background-color 0.3s ease;
+            border-radius: 0 0 9px 9px;
+        }
+        .bucket-fill.token { background: linear-gradient(to top, #1f6feb, #58a6ff); }
+        .bucket-fill.leaky { background: linear-gradient(to top, #0d419d, #388bfd); }
+        .bucket-label {
+            position: absolute;
+            bottom: -22px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 0.7rem;
+            color: #8b949e;
+        }
+
+        /* Drip animation */
+        .drip {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #58a6ff;
+            opacity: 0;
+        }
+
+        /* Fixed window visualization */
+        .window-container {
+            height: 140px;
+            position: relative;
+            margin: 1rem 0;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0d1117;
+        }
+        .window-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            transition: height 0.2s ease;
+            background: linear-gradient(to top, #7c3aed, #a78bfa);
+            border-radius: 4px 4px 0 0;
+        }
+        .window-capacity-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 2px dashed #da3633;
+            opacity: 0.6;
+        }
+        .window-timer {
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+            font-size: 0.7rem;
+            color: #8b949e;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Sliding window visualization */
+        .timeline-container {
+            height: 100px;
+            position: relative;
+            margin: 1rem 0;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0d1117;
+        }
+        .timeline-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #f0883e;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: left 0.1s linear, opacity 0.3s;
+        }
+        .timeline-dot.fading { opacity: 0.3; }
+        .timeline-window {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            right: 0;
+            background: rgba(240, 136, 62, 0.05);
+            border-left: 2px solid rgba(240, 136, 62, 0.4);
+        }
+        .timeline-count {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: 0.75rem;
+            color: #f0883e;
+            font-weight: 600;
+        }
+
+        /* Request log */
+        .log {
+            max-height: 100px;
+            overflow-y: auto;
+            font-size: 0.75rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            border-top: 1px solid #30363d;
+            padding-top: 0.75rem;
+            margin-top: 0.75rem;
+        }
+        .log-entry {
+            padding: 2px 0;
+            opacity: 0;
+            animation: fadeIn 0.2s forwards;
+        }
+        .log-entry.allowed { color: #3fb950; }
+        .log-entry.denied { color: #f85149; }
+        @keyframes fadeIn { to { opacity: 1; } }
+
+        /* Flash effect on request */
+        .flash {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.1s;
+            border-radius: 12px;
+        }
+        .flash.allowed { background: rgba(63, 185, 80, 0.08); }
+        .flash.denied { background: rgba(248, 81, 73, 0.08); }
+        .flash.active { opacity: 1; }
+    </style>
+</head>
+<body>
+    <h1>Rate Limiting Algorithms</h1>
+    <p class="subtitle">Visual comparison of Token Bucket, Leaky Bucket, Fixed Window Counter, and Sliding Window Log</p>
+
+    <div class="controls">
+        <div>
+            <label>Capacity</label><br>
+            <input type="number" id="capacity" value="10" min="1" max="50">
+        </div>
+        <div>
+            <label>Window (sec)</label><br>
+            <input type="number" id="window" value="10" min="1" max="60">
+        </div>
+        <button class="btn-request" onclick="sendRequest()">Send Request</button>
+        <button class="btn-burst" onclick="sendBurst()">Burst (5x)</button>
+        <button class="btn-reset" onclick="resetAll()">Reset</button>
+    </div>
+
+    <div class="grid">
+        <!-- Token Bucket -->
+        <div class="card" id="card-token">
+            <div class="flash" id="flash-token"></div>
+            <h2>Token Bucket</h2>
+            <p class="description">Starts full. Tokens consumed per request, refill over time. Allows bursts.</p>
+            <div class="stats">
+                <div><div class="stat-value" id="token-remaining">10</div><div class="stat-label">Tokens</div></div>
+                <div><div class="stat-value" id="token-allowed">0</div><div class="stat-label">Allowed</div></div>
+                <div><div class="stat-value" id="token-denied">0</div><div class="stat-label">Denied</div></div>
+            </div>
+            <div class="bucket-container">
+                <div class="bucket">
+                    <div class="bucket-fill token" id="token-fill"></div>
+                </div>
+                <div class="bucket-label">Token Level</div>
+            </div>
+            <div class="log" id="log-token"></div>
+        </div>
+
+        <!-- Leaky Bucket -->
+        <div class="card" id="card-leaky">
+            <div class="flash" id="flash-leaky"></div>
+            <h2>Leaky Bucket</h2>
+            <p class="description">Starts empty. Requests add water, drains steadily. Smooths traffic.</p>
+            <div class="stats">
+                <div><div class="stat-value" id="leaky-remaining">10</div><div class="stat-label">Space Left</div></div>
+                <div><div class="stat-value" id="leaky-allowed">0</div><div class="stat-label">Allowed</div></div>
+                <div><div class="stat-value" id="leaky-denied">0</div><div class="stat-label">Denied</div></div>
+            </div>
+            <div class="bucket-container">
+                <div class="bucket">
+                    <div class="bucket-fill leaky" id="leaky-fill"></div>
+                </div>
+                <div class="bucket-label">Water Level</div>
+            </div>
+            <div class="log" id="log-leaky"></div>
+        </div>
+
+        <!-- Fixed Window -->
+        <div class="card" id="card-fixed">
+            <div class="flash" id="flash-fixed"></div>
+            <h2>Fixed Window Counter</h2>
+            <p class="description">Counts requests per fixed time window. Resets at window boundary.</p>
+            <div class="stats">
+                <div><div class="stat-value" id="fixed-remaining">10</div><div class="stat-label">Remaining</div></div>
+                <div><div class="stat-value" id="fixed-allowed">0</div><div class="stat-label">Allowed</div></div>
+                <div><div class="stat-value" id="fixed-denied">0</div><div class="stat-label">Denied</div></div>
+            </div>
+            <div class="window-container">
+                <div class="window-bar" id="fixed-bar"></div>
+                <div class="window-capacity-line" id="fixed-cap-line"></div>
+                <div class="window-timer" id="fixed-timer">10.0s</div>
+            </div>
+            <div class="log" id="log-fixed"></div>
+        </div>
+
+        <!-- Sliding Window Log -->
+        <div class="card" id="card-sliding">
+            <div class="flash" id="flash-sliding"></div>
+            <h2>Sliding Window Log</h2>
+            <p class="description">Tracks exact timestamps. Window slides continuously — no boundary bursts.</p>
+            <div class="stats">
+                <div><div class="stat-value" id="sliding-remaining">10</div><div class="stat-label">Remaining</div></div>
+                <div><div class="stat-value" id="sliding-allowed">0</div><div class="stat-label">Allowed</div></div>
+                <div><div class="stat-value" id="sliding-denied">0</div><div class="stat-label">Denied</div></div>
+            </div>
+            <div class="timeline-container" id="sliding-timeline">
+                <div class="timeline-window" id="sliding-window-bg"></div>
+                <div class="timeline-count" id="sliding-count">0 / 10</div>
+            </div>
+            <div class="log" id="log-sliding"></div>
+        </div>
+    </div>
+
+    <script>
+        let capacity = 10;
+        let windowSec = 10;
+
+        // State for each algorithm
+        let tokenState = { tokens: 10, lastUpdate: performance.now(), allowed: 0, denied: 0 };
+        let leakyState = { water: 0, lastUpdate: performance.now(), allowed: 0, denied: 0 };
+        let fixedState = { count: 0, windowStart: performance.now(), allowed: 0, denied: 0 };
+        let slidingState = { timestamps: [], allowed: 0, denied: 0 };
+
+        function getConfig() {
+            capacity = parseInt(document.getElementById('capacity').value) || 10;
+            windowSec = parseInt(document.getElementById('window').value) || 10;
+        }
+
+        function flash(id, allowed) {
+            const el = document.getElementById(`flash-${id}`);
+            el.className = `flash ${allowed ? 'allowed' : 'denied'} active`;
+            setTimeout(() => el.classList.remove('active'), 200);
+        }
+
+        function addLog(id, allowed, msg) {
+            const log = document.getElementById(`log-${id}`);
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${allowed ? 'allowed' : 'denied'}`;
+            entry.textContent = `${new Date().toLocaleTimeString()} ${allowed ? '✓' : '✗'} ${msg}`;
+            log.prepend(entry);
+            if (log.children.length > 50) log.lastChild.remove();
+        }
+
+        // --- Token Bucket ---
+        function tokenBucketRequest() {
+            getConfig();
+            const now = performance.now();
+            const elapsed = (now - tokenState.lastUpdate) / 1000;
+            const refillRate = capacity / windowSec;
+            tokenState.tokens = Math.min(capacity, tokenState.tokens + elapsed * refillRate);
+            tokenState.lastUpdate = now;
+
+            if (tokenState.tokens >= 1) {
+                tokenState.tokens -= 1;
+                tokenState.allowed++;
+                flash('token', true);
+                addLog('token', true, `Token consumed (${tokenState.tokens.toFixed(1)} left)`);
+                return true;
+            } else {
+                tokenState.denied++;
+                flash('token', false);
+                addLog('token', false, `No tokens available`);
+                return false;
+            }
+        }
+
+        // --- Leaky Bucket ---
+        function leakyBucketRequest() {
+            getConfig();
+            const now = performance.now();
+            const elapsed = (now - leakyState.lastUpdate) / 1000;
+            const leakRate = capacity / windowSec;
+            leakyState.water = Math.max(0, leakyState.water - elapsed * leakRate);
+            leakyState.lastUpdate = now;
+
+            if (leakyState.water + 1 <= capacity) {
+                leakyState.water += 1;
+                leakyState.allowed++;
+                flash('leaky', true);
+                addLog('leaky', true, `Added (${leakyState.water.toFixed(1)}/${capacity})`);
+                return true;
+            } else {
+                leakyState.denied++;
+                flash('leaky', false);
+                addLog('leaky', false, `Bucket full (${leakyState.water.toFixed(1)}/${capacity})`);
+                return false;
+            }
+        }
+
+        // --- Fixed Window ---
+        function fixedWindowRequest() {
+            getConfig();
+            const now = performance.now();
+            const windowMs = windowSec * 1000;
+
+            if (now - fixedState.windowStart >= windowMs) {
+                fixedState.count = 0;
+                fixedState.windowStart = now;
+            }
+
+            if (fixedState.count < capacity) {
+                fixedState.count++;
+                fixedState.allowed++;
+                flash('fixed', true);
+                addLog('fixed', true, `Count: ${fixedState.count}/${capacity}`);
+                return true;
+            } else {
+                fixedState.denied++;
+                flash('fixed', false);
+                addLog('fixed', false, `Window full (${fixedState.count}/${capacity})`);
+                return false;
+            }
+        }
+
+        // --- Sliding Window Log ---
+        function slidingWindowRequest() {
+            getConfig();
+            const now = performance.now();
+            const windowMs = windowSec * 1000;
+            const cutoff = now - windowMs;
+
+            slidingState.timestamps = slidingState.timestamps.filter(t => t > cutoff);
+
+            if (slidingState.timestamps.length < capacity) {
+                slidingState.timestamps.push(now);
+                slidingState.allowed++;
+                flash('sliding', true);
+                addLog('sliding', true, `Logged (${slidingState.timestamps.length}/${capacity})`);
+                return true;
+            } else {
+                slidingState.denied++;
+                flash('sliding', false);
+                addLog('sliding', false, `At limit (${slidingState.timestamps.length}/${capacity})`);
+                return false;
+            }
+        }
+
+        function sendRequest() {
+            tokenBucketRequest();
+            leakyBucketRequest();
+            fixedWindowRequest();
+            slidingWindowRequest();
+        }
+
+        function sendBurst() {
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => sendRequest(), i * 60);
+            }
+        }
+
+        function resetAll() {
+            getConfig();
+            tokenState = { tokens: capacity, lastUpdate: performance.now(), allowed: 0, denied: 0 };
+            leakyState = { water: 0, lastUpdate: performance.now(), allowed: 0, denied: 0 };
+            fixedState = { count: 0, windowStart: performance.now(), allowed: 0, denied: 0 };
+            slidingState = { timestamps: [], allowed: 0, denied: 0 };
+            document.querySelectorAll('.log').forEach(el => el.innerHTML = '');
+        }
+
+        // --- Rendering loop ---
+        function render() {
+            getConfig();
+            const now = performance.now();
+
+            // Token Bucket - refill
+            const tokenElapsed = (now - tokenState.lastUpdate) / 1000;
+            const refillRate = capacity / windowSec;
+            const displayTokens = Math.min(capacity, tokenState.tokens + tokenElapsed * refillRate);
+            const tokenPct = (displayTokens / capacity) * 100;
+            document.getElementById('token-fill').style.height = `${tokenPct}%`;
+            document.getElementById('token-remaining').textContent = Math.floor(displayTokens);
+            document.getElementById('token-allowed').textContent = tokenState.allowed;
+            document.getElementById('token-denied').textContent = tokenState.denied;
+
+            // Leaky Bucket - drain
+            const leakyElapsed = (now - leakyState.lastUpdate) / 1000;
+            const leakRate = capacity / windowSec;
+            const displayWater = Math.max(0, leakyState.water - leakyElapsed * leakRate);
+            const leakyPct = (displayWater / capacity) * 100;
+            document.getElementById('leaky-fill').style.height = `${leakyPct}%`;
+            document.getElementById('leaky-remaining').textContent = Math.floor(capacity - displayWater);
+            document.getElementById('leaky-allowed').textContent = leakyState.allowed;
+            document.getElementById('leaky-denied').textContent = leakyState.denied;
+
+            // Fixed Window
+            const windowMs = windowSec * 1000;
+            const windowElapsed = now - fixedState.windowStart;
+            if (windowElapsed >= windowMs) {
+                fixedState.count = 0;
+                fixedState.windowStart = now;
+            }
+            const fixedPct = (fixedState.count / capacity) * 100;
+            document.getElementById('fixed-bar').style.height = `${fixedPct}%`;
+            document.getElementById('fixed-cap-line').style.top = '0px';
+            const timeLeft = Math.max(0, (windowMs - (now - fixedState.windowStart)) / 1000);
+            document.getElementById('fixed-timer').textContent = `${timeLeft.toFixed(1)}s`;
+            document.getElementById('fixed-remaining').textContent = capacity - fixedState.count;
+            document.getElementById('fixed-allowed').textContent = fixedState.allowed;
+            document.getElementById('fixed-denied').textContent = fixedState.denied;
+
+            // Sliding Window Log - timeline dots
+            const cutoff = now - windowMs;
+            slidingState.timestamps = slidingState.timestamps.filter(t => t > cutoff);
+            const timeline = document.getElementById('sliding-timeline');
+            // Remove old dots
+            timeline.querySelectorAll('.timeline-dot').forEach(d => d.remove());
+            // Add current dots
+            slidingState.timestamps.forEach(t => {
+                const dot = document.createElement('div');
+                dot.className = 'timeline-dot';
+                const age = now - t;
+                const pct = 100 - (age / windowMs) * 100;
+                dot.style.left = `${Math.max(0, Math.min(97, pct))}%`;
+                if (age > windowMs * 0.8) dot.classList.add('fading');
+                timeline.appendChild(dot);
+            });
+            document.getElementById('sliding-count').textContent = `${slidingState.timestamps.length} / ${capacity}`;
+            document.getElementById('sliding-remaining').textContent = capacity - slidingState.timestamps.length;
+            document.getElementById('sliding-allowed').textContent = slidingState.allowed;
+            document.getElementById('sliding-denied').textContent = slidingState.denied;
+
+            requestAnimationFrame(render);
+        }
+
+        // Keyboard shortcut
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.code === 'Space') { e.preventDefault(); sendRequest(); }
+            if (e.code === 'KeyB') { sendBurst(); }
+            if (e.code === 'KeyR') { resetAll(); }
+        });
+
+        render();
+    </script>
+</body>
+</html>

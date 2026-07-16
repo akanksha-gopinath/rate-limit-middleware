@@ -1,9 +1,13 @@
 package com.ratelimit;
 
+import com.ratelimit.algorithm.FixedWindowRateLimiter;
 import com.ratelimit.algorithm.LeakyBucketRateLimiter;
+import com.ratelimit.algorithm.SlidingWindowLogRateLimiter;
 import com.ratelimit.algorithm.TokenBucketRateLimiter;
 import com.ratelimit.store.InMemoryStore;
+import com.ratelimit.store.InMemorySlidingWindowStore;
 import com.ratelimit.store.RateLimitStore;
+import com.ratelimit.store.SlidingWindowStore;
 
 import java.time.Clock;
 import java.util.Objects;
@@ -54,6 +58,7 @@ public final class RateLimitingMiddleware<R, S> {
         private Algorithm algorithm = Algorithm.TOKEN_BUCKET;
         private RateLimitConfig config;
         private RateLimitStore store;
+        private SlidingWindowStore slidingWindowStore;
         private Clock clock = Clock.systemUTC();
         private KeyResolver<R> keyResolver;
         private Function<R, S> handler;
@@ -71,6 +76,11 @@ public final class RateLimitingMiddleware<R, S> {
 
         public Builder<R, S> store(RateLimitStore store) {
             this.store = Objects.requireNonNull(store);
+            return this;
+        }
+
+        public Builder<R, S> slidingWindowStore(SlidingWindowStore slidingWindowStore) {
+            this.slidingWindowStore = Objects.requireNonNull(slidingWindowStore);
             return this;
         }
 
@@ -96,13 +106,20 @@ public final class RateLimitingMiddleware<R, S> {
 
         public RateLimitingMiddleware<R, S> build() {
             Objects.requireNonNull(config, "config is required");
-            if (store == null) {
+            if (store == null && algorithm != Algorithm.SLIDING_WINDOW_LOG) {
                 store = new InMemoryStore();
             }
 
             RateLimiter limiter = switch (algorithm) {
                 case TOKEN_BUCKET -> new TokenBucketRateLimiter(config, store, clock);
                 case LEAKY_BUCKET -> new LeakyBucketRateLimiter(config, store, clock);
+                case FIXED_WINDOW -> new FixedWindowRateLimiter(config, store, clock);
+                case SLIDING_WINDOW_LOG -> {
+                    if (slidingWindowStore == null) {
+                        slidingWindowStore = new InMemorySlidingWindowStore();
+                    }
+                    yield new SlidingWindowLogRateLimiter(config, slidingWindowStore, clock);
+                }
             };
 
             return new RateLimitingMiddleware<>(limiter, keyResolver, handler, deniedHandler);

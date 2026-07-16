@@ -26,6 +26,20 @@ public final class LeakyBucketRateLimiter implements RateLimiter {
     }
 
     @Override
+    public RateLimitResult peek(String key) {
+        long nowNanos = clock.instant().toEpochMilli() * 1_000_000L;
+        BucketState defaultState = BucketState.initial(0.0, nowNanos);
+
+        BucketState current = store.computeIfAbsent(key, defaultState);
+        long elapsedNanos = nowNanos - current.lastUpdateNanos();
+        double leaked = elapsedNanos * config.leakRatePerNano();
+        double currentWater = Math.max(0.0, current.level() - leaked);
+
+        long remaining = (long) (config.capacity() - currentWater);
+        return RateLimitResult.allowed(remaining);
+    }
+
+    @Override
     public RateLimitResult tryAcquire(String key) {
         long nowNanos = clock.instant().toEpochMilli() * 1_000_000L;
         // Bucket starts empty (no water)
