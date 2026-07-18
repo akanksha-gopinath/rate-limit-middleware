@@ -4,6 +4,7 @@ import com.ratelimit.algorithm.FixedWindowRateLimiter;
 import com.ratelimit.algorithm.LeakyBucketRateLimiter;
 import com.ratelimit.algorithm.SlidingWindowLogRateLimiter;
 import com.ratelimit.algorithm.TokenBucketRateLimiter;
+import com.ratelimit.store.InMemoryFixedWindowStore;
 import com.ratelimit.store.InMemoryStore;
 import com.ratelimit.store.InMemorySlidingWindowStore;
 import com.sun.net.httpserver.HttpExchange;
@@ -45,7 +46,7 @@ public final class DemoServer {
     private static void initLimiters() {
         tokenBucket = new TokenBucketRateLimiter(config, new InMemoryStore());
         leakyBucket = new LeakyBucketRateLimiter(config, new InMemoryStore());
-        fixedWindow = new FixedWindowRateLimiter(config, new InMemoryStore());
+        fixedWindow = new FixedWindowRateLimiter(config, new InMemoryFixedWindowStore());
         slidingWindowLog = new SlidingWindowLogRateLimiter(config, new InMemorySlidingWindowStore());
     }
 

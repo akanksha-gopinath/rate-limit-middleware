@@ -30,8 +30,8 @@ public final class RedisStore implements RateLimitStore {
         try (var jedis = pool.getResource()) {
             String levelStr = jedis.get(levelKey);
             if (levelStr == null) {
-                jedis.set(levelKey, String.valueOf(defaultState.level()));
-                jedis.set(timeKey, String.valueOf(defaultState.lastUpdateNanos()));
+                jedis.set(levelKey, String.valueOf(defaultState.fillLevel()));
+                jedis.set(timeKey, String.valueOf(defaultState.lastComputedNanos()));
                 return defaultState;
             }
             double level = Double.parseDouble(levelStr);
@@ -83,8 +83,8 @@ public final class RedisStore implements RateLimitStore {
             BucketState updated = updater.apply(current);
 
             var tx = jedis.multi();
-            tx.set(levelKey, String.valueOf(updated.level()));
-            tx.set(timeKey, String.valueOf(updated.lastUpdateNanos()));
+            tx.set(levelKey, String.valueOf(updated.fillLevel()));
+            tx.set(timeKey, String.valueOf(updated.lastComputedNanos()));
             var results = tx.exec();
 
             if (results == null || results.isEmpty()) {

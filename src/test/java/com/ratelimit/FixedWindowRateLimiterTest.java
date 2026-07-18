@@ -1,7 +1,7 @@
 package com.ratelimit;
 
 import com.ratelimit.algorithm.FixedWindowRateLimiter;
-import com.ratelimit.store.InMemoryStore;
+import com.ratelimit.store.InMemoryFixedWindowStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -14,12 +14,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class FixedWindowRateLimiterTest {
 
-    private InMemoryStore store;
+    private InMemoryFixedWindowStore store;
     private MutableClock clock;
 
     @BeforeEach
     void setUp() {
-        store = new InMemoryStore();
+        store = new InMemoryFixedWindowStore();
         clock = new MutableClock(Instant.parse("2024-01-01T00:00:00Z"));
     }
 

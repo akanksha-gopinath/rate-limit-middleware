@@ -3,8 +3,8 @@ package com.ratelimit.algorithm;
 import com.ratelimit.RateLimitConfig;
 import com.ratelimit.RateLimitResult;
 import com.ratelimit.RateLimiter;
-import com.ratelimit.store.BucketState;
-import com.ratelimit.store.RateLimitStore;
+import com.ratelimit.store.FixedWindowState;
+import com.ratelimit.store.FixedWindowStore;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -12,15 +12,15 @@ import java.time.Duration;
 public final class FixedWindowRateLimiter implements RateLimiter {
 
     private final RateLimitConfig config;
-    private final RateLimitStore store;
+    private final FixedWindowStore store;
     private final Clock clock;
     private final long windowSizeNanos;
 
-    public FixedWindowRateLimiter(RateLimitConfig config, RateLimitStore store) {
+    public FixedWindowRateLimiter(RateLimitConfig config, FixedWindowStore store) {
         this(config, store, Clock.systemUTC());
     }
 
-    public FixedWindowRateLimiter(RateLimitConfig config, RateLimitStore store, Clock clock) {
+    public FixedWindowRateLimiter(RateLimitConfig config, FixedWindowStore store, Clock clock) {
         this.config = config;
         this.store = store;
         this.clock = clock;
@@ -31,13 +31,13 @@ public final class FixedWindowRateLimiter implements RateLimiter {
     public RateLimitResult peek(String key) {
         long nowNanos = clock.instant().toEpochMilli() * 1_000_000L;
         long currentWindowStart = (nowNanos / windowSizeNanos) * windowSizeNanos;
-        BucketState defaultState = new BucketState(0.0, currentWindowStart);
+        FixedWindowState defaultState = FixedWindowState.initial(currentWindowStart);
 
-        BucketState current = store.computeIfAbsent(key, defaultState);
-        if (current.lastUpdateNanos() != currentWindowStart) {
+        FixedWindowState current = store.computeIfAbsent(key, defaultState);
+        if (current.windowStartNanos() != currentWindowStart) {
             return RateLimitResult.allowed(config.capacity());
         }
-        long remaining = config.capacity() - (long) current.level();
+        long remaining = config.capacity() - current.requestCount();
         return RateLimitResult.allowed(remaining);
     }
 
@@ -45,22 +45,21 @@ public final class FixedWindowRateLimiter implements RateLimiter {
     public RateLimitResult tryAcquire(String key) {
         long nowNanos = clock.instant().toEpochMilli() * 1_000_000L;
         long currentWindowStart = (nowNanos / windowSizeNanos) * windowSizeNanos;
-        BucketState defaultState = new BucketState(0.0, currentWindowStart);
+        FixedWindowState defaultState = FixedWindowState.initial(currentWindowStart);
 
-        BucketState[] resultHolder = new BucketState[1];
+        FixedWindowState[] resultHolder = new FixedWindowState[1];
         boolean[] allowed = new boolean[1];
 
         store.updateAtomically(key, defaultState, current -> {
-            if (current.lastUpdateNanos() != currentWindowStart) {
-                // Window has rolled over — reset count
-                BucketState fresh = new BucketState(1.0, currentWindowStart);
+            if (current.windowStartNanos() != currentWindowStart) {
+                FixedWindowState fresh = new FixedWindowState(1, currentWindowStart);
                 resultHolder[0] = fresh;
                 allowed[0] = true;
                 return fresh;
             }
 
-            if (current.level() < config.capacity()) {
-                BucketState updated = new BucketState(current.level() + 1.0, currentWindowStart);
+            if (current.requestCount() < config.capacity()) {
+                FixedWindowState updated = new FixedWindowState(current.requestCount() + 1, currentWindowStart);
                 resultHolder[0] = updated;
                 allowed[0] = true;
                 return updated;
@@ -72,7 +71,7 @@ public final class FixedWindowRateLimiter implements RateLimiter {
         });
 
         if (allowed[0]) {
-            long remaining = config.capacity() - (long) resultHolder[0].level();
+            long remaining = config.capacity() - resultHolder[0].requestCount();
             return RateLimitResult.allowed(remaining);
         } else {
             long windowEndNanos = currentWindowStart + windowSizeNanos;

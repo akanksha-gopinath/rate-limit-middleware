@@ -31,9 +31,9 @@ public final class TokenBucketRateLimiter implements RateLimiter {
         BucketState defaultState = BucketState.initial(config.capacity(), nowNanos);
 
         BucketState current = store.computeIfAbsent(key, defaultState);
-        long elapsedNanos = nowNanos - current.lastUpdateNanos();
+        long elapsedNanos = nowNanos - current.lastComputedNanos();
         double tokensToAdd = elapsedNanos * config.refillRatePerNano();
-        double availableTokens = Math.min(config.capacity(), current.level() + tokensToAdd);
+        double availableTokens = Math.min(config.capacity(), current.fillLevel() + tokensToAdd);
 
         return RateLimitResult.allowed((long) availableTokens);
     }
@@ -47,9 +47,9 @@ public final class TokenBucketRateLimiter implements RateLimiter {
         boolean[] consumed = new boolean[1];
 
         store.updateAtomically(key, defaultState, current -> {
-            long elapsedNanos = nowNanos - current.lastUpdateNanos();
+            long elapsedNanos = nowNanos - current.lastComputedNanos();
             double tokensToAdd = elapsedNanos * config.refillRatePerNano();
-            double availableTokens = Math.min(config.capacity(), current.level() + tokensToAdd);
+            double availableTokens = Math.min(config.capacity(), current.fillLevel() + tokensToAdd);
 
             if (availableTokens >= 1.0) {
                 double newLevel = availableTokens - 1.0;
@@ -66,9 +66,9 @@ public final class TokenBucketRateLimiter implements RateLimiter {
         });
 
         if (consumed[0]) {
-            return RateLimitResult.allowed((long) resultHolder[0].level());
+            return RateLimitResult.allowed((long) resultHolder[0].fillLevel());
         } else {
-            double tokensNeeded = 1.0 - resultHolder[0].level();
+            double tokensNeeded = 1.0 - resultHolder[0].fillLevel();
             long nanosUntilToken = (long) (tokensNeeded / config.refillRatePerNano());
             return RateLimitResult.denied(Duration.ofNanos(nanosUntilToken));
         }

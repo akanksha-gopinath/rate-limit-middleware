@@ -31,9 +31,9 @@ public final class LeakyBucketRateLimiter implements RateLimiter {
         BucketState defaultState = BucketState.initial(0.0, nowNanos);
 
         BucketState current = store.computeIfAbsent(key, defaultState);
-        long elapsedNanos = nowNanos - current.lastUpdateNanos();
+        long elapsedNanos = nowNanos - current.lastComputedNanos();
         double leaked = elapsedNanos * config.leakRatePerNano();
-        double currentWater = Math.max(0.0, current.level() - leaked);
+        double currentWater = Math.max(0.0, current.fillLevel() - leaked);
 
         long remaining = (long) (config.capacity() - currentWater);
         return RateLimitResult.allowed(remaining);
@@ -42,16 +42,15 @@ public final class LeakyBucketRateLimiter implements RateLimiter {
     @Override
     public RateLimitResult tryAcquire(String key) {
         long nowNanos = clock.instant().toEpochMilli() * 1_000_000L;
-        // Bucket starts empty (no water)
         BucketState defaultState = BucketState.initial(0.0, nowNanos);
 
         BucketState[] resultHolder = new BucketState[1];
         boolean[] accepted = new boolean[1];
 
         store.updateAtomically(key, defaultState, current -> {
-            long elapsedNanos = nowNanos - current.lastUpdateNanos();
+            long elapsedNanos = nowNanos - current.lastComputedNanos();
             double leaked = elapsedNanos * config.leakRatePerNano();
-            double currentWater = Math.max(0.0, current.level() - leaked);
+            double currentWater = Math.max(0.0, current.fillLevel() - leaked);
 
             if (currentWater + 1.0 <= config.capacity()) {
                 double newLevel = currentWater + 1.0;
@@ -68,10 +67,10 @@ public final class LeakyBucketRateLimiter implements RateLimiter {
         });
 
         if (accepted[0]) {
-            long remaining = (long) (config.capacity() - resultHolder[0].level());
+            long remaining = (long) (config.capacity() - resultHolder[0].fillLevel());
             return RateLimitResult.allowed(remaining);
         } else {
-            double excessWater = resultHolder[0].level() + 1.0 - config.capacity();
+            double excessWater = resultHolder[0].fillLevel() + 1.0 - config.capacity();
             long nanosUntilSpace = (long) (excessWater / config.leakRatePerNano());
             return RateLimitResult.denied(Duration.ofNanos(nanosUntilSpace));
         }

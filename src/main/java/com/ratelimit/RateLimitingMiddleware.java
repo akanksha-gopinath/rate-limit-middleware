@@ -4,6 +4,8 @@ import com.ratelimit.algorithm.FixedWindowRateLimiter;
 import com.ratelimit.algorithm.LeakyBucketRateLimiter;
 import com.ratelimit.algorithm.SlidingWindowLogRateLimiter;
 import com.ratelimit.algorithm.TokenBucketRateLimiter;
+import com.ratelimit.store.FixedWindowStore;
+import com.ratelimit.store.InMemoryFixedWindowStore;
 import com.ratelimit.store.InMemoryStore;
 import com.ratelimit.store.InMemorySlidingWindowStore;
 import com.ratelimit.store.RateLimitStore;
@@ -11,8 +13,6 @@ import com.ratelimit.store.SlidingWindowStore;
 
 import java.time.Clock;
 import java.util.Objects;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 public final class RateLimitingMiddleware<R, S> {
@@ -58,6 +58,7 @@ public final class RateLimitingMiddleware<R, S> {
         private Algorithm algorithm = Algorithm.TOKEN_BUCKET;
         private RateLimitConfig config;
         private RateLimitStore store;
+        private FixedWindowStore fixedWindowStore;
         private SlidingWindowStore slidingWindowStore;
         private Clock clock = Clock.systemUTC();
         private KeyResolver<R> keyResolver;
@@ -76,6 +77,11 @@ public final class RateLimitingMiddleware<R, S> {
 
         public Builder<R, S> store(RateLimitStore store) {
             this.store = Objects.requireNonNull(store);
+            return this;
+        }
+
+        public Builder<R, S> fixedWindowStore(FixedWindowStore fixedWindowStore) {
+            this.fixedWindowStore = Objects.requireNonNull(fixedWindowStore);
             return this;
         }
 
@@ -106,18 +112,22 @@ public final class RateLimitingMiddleware<R, S> {
 
         public RateLimitingMiddleware<R, S> build() {
             Objects.requireNonNull(config, "config is required");
-            if (store == null && algorithm != Algorithm.SLIDING_WINDOW_LOG) {
-                store = new InMemoryStore();
-            }
 
             RateLimiter limiter = switch (algorithm) {
-                case TOKEN_BUCKET -> new TokenBucketRateLimiter(config, store, clock);
-                case LEAKY_BUCKET -> new LeakyBucketRateLimiter(config, store, clock);
-                case FIXED_WINDOW -> new FixedWindowRateLimiter(config, store, clock);
+                case TOKEN_BUCKET -> {
+                    if (store == null) store = new InMemoryStore();
+                    yield new TokenBucketRateLimiter(config, store, clock);
+                }
+                case LEAKY_BUCKET -> {
+                    if (store == null) store = new InMemoryStore();
+                    yield new LeakyBucketRateLimiter(config, store, clock);
+                }
+                case FIXED_WINDOW -> {
+                    if (fixedWindowStore == null) fixedWindowStore = new InMemoryFixedWindowStore();
+                    yield new FixedWindowRateLimiter(config, fixedWindowStore, clock);
+                }
                 case SLIDING_WINDOW_LOG -> {
-                    if (slidingWindowStore == null) {
-                        slidingWindowStore = new InMemorySlidingWindowStore();
-                    }
+                    if (slidingWindowStore == null) slidingWindowStore = new InMemorySlidingWindowStore();
                     yield new SlidingWindowLogRateLimiter(config, slidingWindowStore, clock);
                 }
             };
